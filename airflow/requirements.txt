@@ -1,3 +1,6 @@
 apache-airflow-providers-apache-spark
 ipython
 notebook
+requests
+
+minio

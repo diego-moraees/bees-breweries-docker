@@ -24,7 +24,7 @@ services:
       /bin/sh -c "
         sleep 5;
         mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
-        mc mb myminio/datalake || true;
+        mc mb myminio/bronze || true; mc mb myminio/silver || true; mc mb myminio/gold || true;
       "
     env_file:
       - ../config.env

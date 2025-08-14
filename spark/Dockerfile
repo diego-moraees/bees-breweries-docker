@@ -1,5 +1,5 @@
 # Use a single stage build to avoid issues
-FROM openjdk:11.0.11-jre-slim-buster
+FROM openjdk:11-jre-slim
 
 # Install essential packages
 RUN apt-get update && apt-get install -y \
