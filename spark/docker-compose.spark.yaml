@@ -1,0 +1,94 @@
+services:
+  spark-master:
+    image: our-own-apache-spark
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "9090:8080"
+      - "7077:7077"
+    volumes:
+       - ./notebooks:/opt/spark-apps
+       # - ./data:/opt/spark-data
+    environment:
+      - SPARK_LOCAL_IP=spark-master
+      - SPARK_WORKLOAD=master
+    env_file:
+      - ../config.env
+    networks:
+      - project-net
+
+  spark-worker-a:
+    image: our-own-apache-spark
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "9091:8080"
+      - "7000:7000"
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_DRIVER_MEMORY=1G
+      - SPARK_EXECUTOR_MEMORY=1G
+      - SPARK_WORKLOAD=worker
+      - SPARK_LOCAL_IP=spark-worker-a
+    env_file:
+      - ../config.env
+    volumes:
+       - ./notebooks:/opt/spark-apps
+       # - ./data:/opt/spark-data
+    networks:
+      - project-net
+      
+  spark-worker-b:
+    image: our-own-apache-spark
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "9092:8080"
+      - "7001:7000"
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_DRIVER_MEMORY=1G
+      - SPARK_EXECUTOR_MEMORY=1G
+      - SPARK_WORKLOAD=worker
+      - SPARK_LOCAL_IP=spark-worker-b
+    env_file:
+      - ../config.env
+    volumes:
+        - ./notebooks:/opt/spark-apps
+        # - ./data:/opt/spark-data
+    networks:
+      - project-net
+
+  jupyter:
+    image: jupyter/pyspark-notebook:latest
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/home/jovyan/
+      # - ./data:/home/jovyan/data
+    env_file:
+      - ../config.env
+    environment:
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN}
+      - PYSPARK_SUBMIT_ARGS=--packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.11.1026 pyspark-shell
+    depends_on:
+      - spark-master
+      - spark-worker-a
+      - spark-worker-b
+    networks:
+      - project-net
+    
+networks:
+  project-net:
+    external: true
