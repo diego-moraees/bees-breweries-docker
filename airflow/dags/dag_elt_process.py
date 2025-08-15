@@ -1,18 +1,20 @@
-# airflow/dags/dag_elt_process.py
 from datetime import datetime, timedelta
 import os
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from airflow.operators.empty import EmptyOperator
+from airflow.operators.email import EmailOperator
+from airflow.utils.trigger_rule import TriggerRule
 
 # Default behavior for all tasks
 DEFAULT_ARGS = {
     "owner": "airflow",
     "depends_on_past": False,
-    "email_on_failure": False,
-    "email_on_retry": False,
-    "retries": 2,
-    "retry_delay": timedelta(minutes=3),
+    "email": [os.getenv("AIRFLOW_ON_FAILED_EMAIL")],
+    "email_on_failure": True,
+    "email_on_success": False,
+    "retries": 0,
 }
 
 # Common environment variables passed to tasks
@@ -33,6 +35,10 @@ COMMON_ENV = {
     "OPEN_BREWERY_PAGE_SIZE": os.getenv("OPEN_BREWERY_PAGE_SIZE", "200"),
     # "OPEN_BREWERY_MAX_PAGES": "2",  # optional throttle for tests
 }
+
+ALERT_TO = os.getenv("ALERT_EMAIL_TO", os.getenv("AIRFLOW_ON_FAILED_EMAIL", os.getenv("AIRFLOW__SMTP__SMTP_USER", "diego.moraes.ext@gmail.com")))
+
+
 
 # Spark cluster endpoint
 SPARK_MASTER = "spark://spark-master:7077"
@@ -90,6 +96,10 @@ with DAG(
         tags=["breweries", "spark", "minio", "etl"],
 ) as dag:
 
+    # Start marker
+    start = EmptyOperator(task_id="start")
+
+
     # BRONZE: Python script prints ingestion_date on the last line; capture it via XCom
     bronze_land_raw = BashOperator(
         task_id="bronze_land_raw",
@@ -132,4 +142,20 @@ with DAG(
         trigger_rule="none_failed_min_one_success",
     )
 
-    bronze_land_raw >> silver_build >> gold_build
+    notify_failure = EmailOperator(
+        task_id="notify_failure",
+        to=[ALERT_TO],
+        subject="DAG breweries_elt_pipeline FAILED",
+        html_content=(
+            "DAG <b>breweries_elt_pipeline</b> failed at {{ ts }}.<br>"
+            "Failed tasks: <b>{{ dag_run.get_task_instances(state='failed') | map(attribute='task_id') | list }}</b><br>"
+            "Run ID: <code>{{ dag_run.run_id }}</code>"
+        ),
+        trigger_rule=TriggerRule.ONE_FAILED,
+    )
+
+    # End marker
+    end = EmptyOperator(task_id="end")
+
+    start >> bronze_land_raw >> silver_build >> gold_build >> end
+    [bronze_land_raw, silver_build, gold_build] >> notify_failure
