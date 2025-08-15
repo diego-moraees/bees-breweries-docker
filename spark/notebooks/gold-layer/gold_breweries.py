@@ -1,37 +1,47 @@
-# %% [markdown]
-# Gold Notebook – Aggregation by type and location
-
-# %%
+# spark/notebooks/gold-layer/gold_breweries.py
 import argparse
 import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, count
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--ingestion_date", required=True)
-args = parser.parse_args()
+"""
+Reads Silver parquet and writes aggregated counts by type and location.
+"""
 
-SILVER_BUCKET = os.getenv("SILVER_BUCKET", "silver")
-GOLD_BUCKET = os.getenv("GOLD_BUCKET", "gold")
+def main(ingestion_date: str):
+    silver_bucket = os.getenv("SILVER_BUCKET", "silver")
+    gold_bucket = os.getenv("GOLD_BUCKET", "gold")
 
-spark = SparkSession.builder.appName("gold_breweries").getOrCreate()
+    silver_base = f"s3a://{silver_bucket}/breweries"
+    gold_base = f"s3a://{gold_bucket}/breweries_agg"
 
-silver_base = f"s3a://{SILVER_BUCKET}/breweries"
-silver_df = spark.read.parquet(silver_base).where(col("ingestion_date") == args.ingestion_date)
+    spark = (
+        SparkSession.builder
+        .appName("gold_breweries")
+        .getOrCreate()
+    )
 
-agg_df = (
-    silver_df
-    .groupBy("ingestion_date","country","state","brewery_type")
-    .agg(count("id").alias("brewery_count"))
-)
+    df = spark.read.parquet(silver_base).where(col("ingestion_date") == ingestion_date)
 
-(
-    agg_df
-    .coalesce(1)
-    .write
-    .mode("overwrite")
-    .partitionBy("ingestion_date")
-    .parquet(f"s3a://{GOLD_BUCKET}/breweries_agg")
-)
+    agg = (
+        df.groupBy("ingestion_date", "country", "state", "brewery_type")
+        .agg(count("id").alias("brewery_count"))
+    )
 
-print("Gold aggregation completed.")
+    (
+        agg.coalesce(1)  # dataset pequeno; 1 arquivo por praticidade
+        .write
+        .mode("overwrite")
+        .partitionBy("ingestion_date")
+        .parquet(gold_base)
+    )
+
+    print("Gold write completed:", gold_base)
+    spark.stop()
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser()
+    p.add_argument("--ingestion_date", required=True)
+    args = p.parse_args()
+    main(args.ingestion_date)

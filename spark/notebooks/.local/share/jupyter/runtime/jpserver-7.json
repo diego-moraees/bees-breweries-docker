@@ -7,7 +7,7 @@
   "root_dir": "/home/jovyan",
   "secure": false,
   "sock": "",
-  "token": "your_jupyter_token",
-  "url": "http://e2b1386036b4:8888/",
+  "token": "5608fbb8bdce15d45f4b955771c2c5b09fd64667c24bc17f",
+  "url": "http://e0eb5dcd1cd5:8888/",
   "version": "2.8.0"
 }

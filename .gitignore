@@ -24,3 +24,7 @@ airflow/plugins/__pycache__/
 
 # Spark temp
 spark/work/
+spark/notebooks/.ipython/
+spark/notebooks/.jupyter/
+spark/notebooks/.npm/
+spark/notebooks/.local/
