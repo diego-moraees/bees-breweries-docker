@@ -57,7 +57,7 @@ def fetch_and_land_raw(**context):
         log.info("Wrote %s/%s", BRONZE_BUCKET, object_name)
 
         page += 1
-        time.sleep(0.2)  # be kind to the public API
+        time.sleep(0.2)
 
     log.info("Finished landing raw JSON pages: %d objects", total_objects)
     context["ti"].xcom_push(key="ingestion_date", value=ingestion_date)

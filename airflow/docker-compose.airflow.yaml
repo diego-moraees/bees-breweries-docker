@@ -84,8 +84,7 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/dags/tasks:/opt/airflow/dags/tasks
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-    - ../spark/notebooks:/opt/spark-apps
-    #- ../spark/jars:/opt/spark-jars
+    - ../spark/jobs:/opt/spark-apps
     - /var/run/docker.sock:/var/run/docker.sock
 
   user: "${AIRFLOW_UID:-50000}:0"

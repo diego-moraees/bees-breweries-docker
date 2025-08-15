@@ -1,4 +1,3 @@
-# spark/notebooks/silver-layer/silver_breweries.py
 import argparse
 import os
 

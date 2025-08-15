@@ -24,7 +24,9 @@ airflow/plugins/__pycache__/
 
 # Spark temp
 spark/work/
-spark/notebooks/.ipython/
-spark/notebooks/.jupyter/
-spark/notebooks/.npm/
-spark/notebooks/.local/
+spark/jobs/.ipython/
+spark/jobs/.jupyter/
+spark/jobs/.npm/
+spark/jobs/.local/
+spark/jobs/**/.ipynb_checkpoints/
+/spark/jobs/.local/

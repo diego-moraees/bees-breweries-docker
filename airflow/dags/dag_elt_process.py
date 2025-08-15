@@ -66,34 +66,12 @@ with DAG(
         "--jars /opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar "
     )
 
-    # silver_build = SparkSubmitOperator(
-    #     task_id="silver_build",
-    #     conn_id="spark_default",
-    #     application="/opt/spark-apps/silver-layer/silver_breweries.py",
-    #     name="silver_breweries",
-    #     conf=spark_conf,
-    #     application_args=["--ingestion_date", "{{ ti.xcom_pull(task_ids='bronze_land_raw') }}"],
-    #     deploy_mode="client",
-    #     jars="/opt/spark-jars/hadoop-aws-3.3.4.jar,/opt/spark-jars/aws-java-sdk-bundle-1.12.262.jar",
-    #     verbose=True,
-    # )
-    #
-    # gold_build = SparkSubmitOperator(
-    #     task_id="gold_build",
-    #     conn_id="spark_default",
-    #     application="/opt/spark-apps/gold-layer/gold_breweries.py",
-    #     name="gold_breweries",
-    #     conf=spark_conf,
-    #     application_args=["--ingestion_date", "{{ ti.xcom_pull(task_ids='bronze_land_raw') }}"],
-    #     deploy_mode="client",
-    #     jars="/opt/spark-jars/hadoop-aws-3.3.4.jar,/opt/spark-jars/aws-java-sdk-bundle-1.12.262.jar",
-    #     verbose=True,
-    # )
+
     silver_build = BashOperator(
         task_id="silver_build",
         bash_command=(
                 spark_cmd_common +
-                "/opt/spark-apps/silver-layer/silver_breweries.py "
+                "/opt/spark-apps/silver-layer/silver_breweries_transform.py "
                 "--ingestion_date {{ ti.xcom_pull(task_ids='bronze_land_raw') }}"
         ),
     )
@@ -102,7 +80,7 @@ with DAG(
         task_id="gold_build",
         bash_command=(
                 spark_cmd_common +
-                "/opt/spark-apps/gold-layer/gold_breweries.py "
+                "/opt/spark-apps/gold-layer/gold_breweries_aggregate.py "
                 "--ingestion_date {{ ti.xcom_pull(task_ids='bronze_land_raw') }}"
         ),
     )

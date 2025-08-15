@@ -8,8 +8,7 @@ services:
       - "9090:8080"
       - "7077:7077"
     volumes:
-       - ./notebooks:/opt/spark-apps
-       # - ./data:/opt/spark-data
+       - ./jobs:/opt/spark-apps
     environment:
       - SPARK_LOCAL_IP=spark-master
       - SPARK_WORKLOAD=master
@@ -39,11 +38,10 @@ services:
     env_file:
       - ../config.env
     volumes:
-       - ./notebooks:/opt/spark-apps
-       # - ./data:/opt/spark-data
+       - ./jobs:/opt/spark-apps
     networks:
       - project-net
-      
+
   spark-worker-b:
     image: our-own-apache-spark
     build:
@@ -65,8 +63,7 @@ services:
     env_file:
       - ../config.env
     volumes:
-        - ./notebooks:/opt/spark-apps
-        # - ./data:/opt/spark-data
+        - ./jobs:/opt/spark-apps
     networks:
       - project-net
 
@@ -75,8 +72,7 @@ services:
     ports:
       - "8888:8888"
     volumes:
-      - ./notebooks:/home/jovyan/
-      # - ./data:/home/jovyan/data
+      - ./jobs:/home/jovyan/
     env_file:
       - ../config.env
     environment:
@@ -88,7 +84,7 @@ services:
       - spark-worker-b
     networks:
       - project-net
-    
+
 networks:
   project-net:
     external: true
