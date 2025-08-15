@@ -80,6 +80,17 @@ with DAG(
         task_id="gold_build",
         bash_command=(
                 spark_cmd_common +
+
+                # Delta Lake
+                " --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension "
+                " --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog "
+
+                # JARs (S3A + Delta)
+                " --jars /opt/spark/jars/hadoop-aws-3.3.4.jar,"
+                "/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar,"
+                "/opt/spark/jars/delta-core_2.12-2.4.0.jar,"
+                "/opt/spark/jars/delta-storage-2.4.0.jar "
+                
                 "/opt/spark-apps/gold-layer/gold_breweries_aggregate.py "
                 "--ingestion_date {{ ti.xcom_pull(task_ids='bronze_land_raw') }}"
         ),

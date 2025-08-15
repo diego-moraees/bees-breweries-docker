@@ -32,4 +32,12 @@ RUN curl -fsSL -o /opt/spark/jars/hadoop-aws-3.3.4.jar \
       https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar \
  && chown -R airflow:0 /opt/spark/jars
 
+# --- Delta Lake jars (para Spark 3.4 / Scala 2.12) ---
+ARG DELTA_VERSION=2.4.0
+RUN curl -fsSL -o /opt/spark/jars/delta-core_2.12-${DELTA_VERSION}.jar \
+      https://repo1.maven.org/maven2/io/delta/delta-core_2.12/${DELTA_VERSION}/delta-core_2.12-${DELTA_VERSION}.jar \
+ && curl -fsSL -o /opt/spark/jars/delta-storage-${DELTA_VERSION}.jar \
+      https://repo1.maven.org/maven2/io/delta/delta-storage/${DELTA_VERSION}/delta-storage-${DELTA_VERSION}.jar \
+ && chown -R airflow:0 /opt/spark/jars
+
 USER airflow
