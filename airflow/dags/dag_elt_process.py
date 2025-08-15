@@ -21,8 +21,8 @@ DEFAULT_ARGS = {
 COMMON_ENV = {
     # MinIO / buckets
     "MINIO_ENDPOINT_URL": os.getenv("MINIO_ENDPOINT_URL", "http://minio:9000"),
-    "MINIO_ROOT_USER": os.getenv("MINIO_ROOT_USER", "admin"),
-    "MINIO_ROOT_PASSWORD": os.getenv("MINIO_ROOT_PASSWORD", "admin123456"),
+    "MINIO_ROOT_USER": os.getenv("MINIO_ROOT_USER"),
+    "MINIO_ROOT_PASSWORD": os.getenv("MINIO_ROOT_PASSWORD"),
     "BRONZE_BUCKET": os.getenv("BRONZE_BUCKET", "bronze"),
     "SILVER_BUCKET": os.getenv("SILVER_BUCKET", "silver"),
     "GOLD_BUCKET": os.getenv("GOLD_BUCKET", "gold"),
@@ -37,7 +37,6 @@ COMMON_ENV = {
 }
 
 ALERT_TO = os.getenv("ALERT_EMAIL_TO", os.getenv("AIRFLOW_ON_FAILED_EMAIL", os.getenv("AIRFLOW__SMTP__SMTP_USER", "diego.moraes.ext@gmail.com")))
-
 
 
 # Spark cluster endpoint

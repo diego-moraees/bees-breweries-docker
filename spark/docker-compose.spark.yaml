@@ -68,22 +68,30 @@ services:
       - project-net
 
   jupyter:
-    image: jupyter/pyspark-notebook:latest
+    image: jupyter/pyspark-notebook:spark-3.4.0
     ports:
       - "8888:8888"
-    volumes:
-      - ./jobs:/home/jovyan/
-    env_file:
-      - ../config.env
-    environment:
-      - JUPYTER_TOKEN=${JUPYTER_TOKEN}
-      - PYSPARK_SUBMIT_ARGS=--packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.11.1026 pyspark-shell
+    networks:
+      - project-net
     depends_on:
       - spark-master
       - spark-worker-a
       - spark-worker-b
-    networks:
-      - project-net
+    volumes:
+      - ./notebooks:/home/jovyan/work
+    env_file:
+      - ../config.env
+    environment:
+      # Aponta para o master remoto
+      - SPARK_MASTER=spark://spark-master:7077
+
+      # JARs de S3A e Delta via --packages
+      - PYSPARK_SUBMIT_ARGS=--packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,io.delta:delta-core_2.12:2.4.0 pyspark-shell
+
+      # Credenciais do MinIO (usadas pelo Hadoop S3A)
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+
 
 networks:
   project-net:
