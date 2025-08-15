@@ -1,99 +1,135 @@
+# airflow/dags/dag_elt_process.py
 from datetime import datetime, timedelta
 import os
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
-from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
+# Default behavior for all tasks
 DEFAULT_ARGS = {
-    "owner": "data-platform",
+    "owner": "airflow",
     "depends_on_past": False,
     "email_on_failure": False,
     "email_on_retry": False,
-    "retries": 0,
-    "retry_delay": timedelta(minutes=5),
+    "retries": 2,
+    "retry_delay": timedelta(minutes=3),
 }
+
+# Common environment variables passed to tasks
+COMMON_ENV = {
+    # MinIO / buckets
+    "MINIO_ENDPOINT_URL": os.getenv("MINIO_ENDPOINT_URL", "http://minio:9000"),
+    "MINIO_ROOT_USER": os.getenv("MINIO_ROOT_USER", "admin"),
+    "MINIO_ROOT_PASSWORD": os.getenv("MINIO_ROOT_PASSWORD", "admin123456"),
+    "BRONZE_BUCKET": os.getenv("BRONZE_BUCKET", "bronze"),
+    "SILVER_BUCKET": os.getenv("SILVER_BUCKET", "silver"),
+    "GOLD_BUCKET": os.getenv("GOLD_BUCKET", "gold"),
+
+    # Dataset
+    "DATASET_NAME": os.getenv("DATASET_NAME", "breweries"),
+
+    # Source API
+    "OPEN_BREWERY_BASE_URL": os.getenv("OPEN_BREWERY_BASE_URL", "https://api.openbrewerydb.org/v1"),
+    "OPEN_BREWERY_PAGE_SIZE": os.getenv("OPEN_BREWERY_PAGE_SIZE", "200"),
+    # "OPEN_BREWERY_MAX_PAGES": "2",  # optional throttle for tests
+}
+
+# Spark cluster endpoint
+SPARK_MASTER = "spark://spark-master:7077"
+
+# Reusable JAR sets
+AWS_JARS = [
+    "/opt/spark/jars/hadoop-aws-3.3.4.jar",
+    "/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar",
+]
+DELTA_JARS = [
+    "/opt/spark/jars/delta-core_2.12-2.4.0.jar",
+    "/opt/spark/jars/delta-storage-2.4.0.jar",
+]
+
+# Reusable Spark conf (S3A + timezone); credentials go via ENV, not --conf
+S3A_CONF = [
+    "--conf", "spark.hadoop.fs.s3a.endpoint=http://minio:9000",
+    "--conf", "spark.hadoop.fs.s3a.path.style.access=true",
+    "--conf", "spark.hadoop.fs.s3a.connection.ssl.enabled=false",
+    "--conf", "spark.sql.session.timeZone=UTC",
+]
+
+# Delta Lake specific Spark conf (only for gold)
+DELTA_CONF = [
+    "--conf", "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension",
+    "--conf", "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog",
+]
+
+def build_spark_cmd(app_path: str, extra_confs=None, extra_jars=None, app_args: str = "") -> str:
+    """
+    Build a safe spark-submit command string:
+    - client deploy mode (driver runs in worker container)
+    - S3A conf (no secrets on cmdline)
+    - JAR set composed from AWS + optional extras (e.g., Delta)
+    """
+    jars = AWS_JARS + (extra_jars or [])
+    confs = S3A_CONF + (extra_confs or [])
+    return (
+            "set -euo pipefail; "
+            "/opt/spark/bin/spark-submit "
+            f"--master {SPARK_MASTER} "
+            "--deploy-mode client "
+            + " ".join(confs) + " "
+                                f"--jars {','.join(jars)} "
+                                f"{app_path} {app_args}"
+    )
 
 with DAG(
         dag_id="breweries_elt_pipeline",
-        description="Ingest breweries from Open Brewery DB and build bronze/silver/gold medallion layers",
+        description="Ingest Open Brewery DB and build bronze/silver/gold medallion layers",
         default_args=DEFAULT_ARGS,
         start_date=datetime(2025, 1, 1),
-        schedule_interval=None,  # set '@daily' if you want scheduling
+        schedule=None,          # Airflow 2.10+ style (no schedule)
         catchup=False,
-        tags=["breweries", "medallion", "spark", "minio"],
+        tags=["breweries", "spark", "minio", "etl"],
 ) as dag:
 
-    # --- BRONZE: run our Python script; it prints ingestion_date to stdout ---
-    bronze_env = {
-        "MINIO_ENDPOINT_URL": os.getenv("MINIO_ENDPOINT_URL", "http://minio:9000"),
-        "MINIO_ROOT_USER": os.getenv("MINIO_ROOT_USER", "admin"),
-        "MINIO_ROOT_PASSWORD": os.getenv("MINIO_ROOT_PASSWORD", "admin123456"),
-        "BRONZE_BUCKET": os.getenv("BRONZE_BUCKET", "bronze"),
-        "OPEN_BREWERY_BASE_URL": os.getenv("OPEN_BREWERY_BASE_URL", "https://api.openbrewerydb.org/v1"),
-        "OPEN_BREWERY_PAGE_SIZE": os.getenv("OPEN_BREWERY_PAGE_SIZE", "200"),
-        # Optional throttle for tests (comment to fetch all pages)
-        # "OPEN_BREWERY_MAX_PAGES": "2",
-    }
-
+    # BRONZE: Python script prints ingestion_date on the last line; capture it via XCom
     bronze_land_raw = BashOperator(
         task_id="bronze_land_raw",
-        bash_command="python /opt/airflow/dags/scripts/bronze_ingest.py",
-        env=bronze_env,
-        do_xcom_push=True,  # capture printed ingestion_date
+        bash_command="set -euo pipefail; python /opt/airflow/dags/scripts/bronze_ingest.py",
+        env=COMMON_ENV,
+        do_xcom_push=True,
     )
 
-    # Common Spark conf for MinIO/S3A
-    spark_conf = {
-        "spark.hadoop.fs.s3a.endpoint": "http://minio:9000",
-        "spark.hadoop.fs.s3a.path.style.access": "true",
-        "spark.hadoop.fs.s3a.connection.ssl.enabled": "false",
-        "spark.hadoop.fs.s3a.access.key": os.getenv("MINIO_ROOT_USER", "admin"),
-        "spark.hadoop.fs.s3a.secret.key": os.getenv("MINIO_ROOT_PASSWORD", "admin123456"),
-        "spark.sql.session.timeZone": "UTC",
-    }
-
-    spark_cmd_common = (
-        "/opt/spark/bin/spark-submit "
-        "--master spark://spark-master:7077 "
-        "--deploy-mode client "
-        "--conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 "
-        "--conf spark.hadoop.fs.s3a.path.style.access=true "
-        "--conf spark.hadoop.fs.s3a.connection.ssl.enabled=false "
-        "--conf spark.hadoop.fs.s3a.access.key=admin "
-        "--conf spark.hadoop.fs.s3a.secret.key=admin123456 "
-        "--conf spark.sql.session.timeZone=UTC "
-        "--jars /opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar "
+    # SILVER: uses S3A via ENV
+    silver_cmd = build_spark_cmd(
+        app_path="/opt/spark-apps/silver-layer/silver_breweries_transform.py",
+        app_args="--ingestion_date {{ ti.xcom_pull(task_ids='bronze_land_raw') }}",
     )
-
-
     silver_build = BashOperator(
         task_id="silver_build",
-        bash_command=(
-                spark_cmd_common +
-                "/opt/spark-apps/silver-layer/silver_breweries_transform.py "
-                "--ingestion_date {{ ti.xcom_pull(task_ids='bronze_land_raw') }}"
-        ),
+        bash_command=silver_cmd,
+        env={
+            **COMMON_ENV,
+            # Hadoop AWS SDK pick credentials from environment
+            "AWS_ACCESS_KEY_ID": os.getenv("MINIO_ROOT_USER", "admin"),
+            "AWS_SECRET_ACCESS_KEY": os.getenv("MINIO_ROOT_PASSWORD", "admin123456"),
+        },
     )
 
+    # GOLD: enable Delta Lake and write aggregated output
+    gold_cmd = build_spark_cmd(
+        app_path="/opt/spark-apps/gold-layer/gold_breweries_aggregate.py",
+        extra_confs=DELTA_CONF,
+        extra_jars=DELTA_JARS,
+        app_args="--ingestion_date {{ ti.xcom_pull(task_ids='bronze_land_raw') }}",
+    )
     gold_build = BashOperator(
         task_id="gold_build",
-        bash_command=(
-                spark_cmd_common +
-
-                # Delta Lake
-                " --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension "
-                " --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog "
-
-                # JARs (S3A + Delta)
-                " --jars /opt/spark/jars/hadoop-aws-3.3.4.jar,"
-                "/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar,"
-                "/opt/spark/jars/delta-core_2.12-2.4.0.jar,"
-                "/opt/spark/jars/delta-storage-2.4.0.jar "
-                
-                "/opt/spark-apps/gold-layer/gold_breweries_aggregate.py "
-                "--ingestion_date {{ ti.xcom_pull(task_ids='bronze_land_raw') }}"
-        ),
+        bash_command=gold_cmd,
+        env={
+            **COMMON_ENV,
+            "AWS_ACCESS_KEY_ID": os.getenv("MINIO_ROOT_USER", "admin"),
+            "AWS_SECRET_ACCESS_KEY": os.getenv("MINIO_ROOT_PASSWORD", "admin123456"),
+        },
+        trigger_rule="none_failed_min_one_success",
     )
 
-bronze_land_raw >> silver_build >> gold_build
+    bronze_land_raw >> silver_build >> gold_build
